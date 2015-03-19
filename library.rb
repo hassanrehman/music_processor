@@ -9,9 +9,17 @@ class Library
 
   INDEX_FILENAME = "files/index.txt"
 
-  def initialize(basepath)
-    raise "Invalid Path #{basepath}" if !File.exists?(basepath) and !File.directory?(basepath)
-    @basepath = basepath
+  def initialize(settings)
+    @settings = settings
+    @basepath = @settings.basepath
+
+    raise "Invalid Path #{@basepath}" if !File.exists?(@basepath) and !File.directory?(@basepath)
+
+    if @settings.rebuild
+      build_index
+      @settings.rebuild = false
+    end
+    @broadcast = nil
   end
 
 
@@ -40,7 +48,7 @@ class Library
   end
 
   def move_mp3_files(source_path, destination_path, file_operation="mv")
-    raise "Invalid file operation: should be either :cp or :mv" unless %w(cp mv).include?(file_operation)
+    raise "Invalid file operation: should be either 'cp' or 'mv'" unless %w(cp mv).include?(file_operation)
     paths = Dir["#{source_path}/**/*.mp3"]
     total = paths.count
     paths.each_with_index do |filepath, i|
@@ -72,14 +80,10 @@ class Library
 
   def build_index
     puts "rebuilding library index on #{@basepath}"
-    filepaths = []
-    Dir["#{@basepath}/**/*.mp3"].entries.each do |f|
-      if File.file?(f)
-        filepaths << f
-      end
-    end
+    s = Time.now
+    filepaths = Dir["#{@basepath}/**/*.mp3"].entries.select{|a| File.file?(a) }
     File.open(INDEX_FILENAME, 'w'){|f| f.puts filepaths.join("|") }
-    puts "done rebuilding.."
+    puts "done rebuilding .. (#{s.elapsed}s)"
   end
 
   def get_files(filters=[])
@@ -94,8 +98,11 @@ class Library
           file = files[id.to_i]
           filtered_songs << file if file.present?
         else
+          tokens = filter.split(/\s+/).map(&:downcase)
           files.each do |file|
-            filtered_songs << file if file.downcase.include?(filter.downcase)
+            if tokens.all?{|t| file.downcase.include?(t) }
+              filtered_songs << file 
+            end
           end
         end
         selected_files |= filtered_songs
@@ -107,37 +114,48 @@ class Library
 
   #returns true if index needs to be rebuild for later
   def process_input_during_play(path)
-    rebuild_when_done = false
-    #we need to consume all inputs sent in by the user
-    input_exists = true
-    while input_exists do
-      input = begin
-        Timeout::timeout(1) do
-          STDIN.gets.chomp
-        end
-      rescue Timeout::Error
-        input_exists = false
-        nil
-      end
-      if input.present?
-        puts "processing input: #{input}"
-        cmd = input.strip.downcase
-        if cmd == "remove"
+    loop do
+      begin
+        cmd = String.read("cmd> ")
+        if /^(h|help|\?)$/i =~ cmd
+          puts ""
+          puts "commands:"
+          puts "help (also h, ?): print this help message"
+          puts "info (also i): print mp3 info on this song"
+          puts "remove (also r): remove this file"
+          puts "mobile (also m): move this file to available android device (via adb command)"
+          puts "next (also n): play the next file"
+          puts "exit (also quit): quit the program"
+        elsif /^(info|i)$/i =~ cmd
+          Mp3.new(path).inspect
+          
+        elsif /^(remove|r)$/i =~ cmd
           puts "removing: #{path}"
           FileUtils.rm_f(path)
-          rebuild_when_done = true
-        elsif cmd == "to_phone"
-          puts "copying: #{path} to phone"
+          @settings.rebuild = true
+        elsif /^(mobile|m)$/i =~ cmd
+          puts "copying to phone"
           Android.cp(path, path.gsub("#{@basepath}/", ""))
+        elsif /^(next|n)$/i =~ cmd
+          @broadcast = "next"
+        elsif /^(exit|quit)$/i =~ cmd
+          @broadcast = "exit"
+          break
+        else
+          puts "invalid command: #{cmd}\nuse 'help' to see available commands..."
         end
+
+
+      rescue RuntimeError => e
+        break
       end
     end
-    return rebuild_when_done
+
   end
 
   def search(filters)
     if filters.blank?
-      puts "no results"
+      puts "nothing to search"
       return
     end
     search_results = get_files(filters)
@@ -147,6 +165,7 @@ class Library
     end
 
     all_songs = get_files([])
+    puts @basepath
     search_results.first(100).each_with_index do |file, i|
       puts "#{all_songs.index(file)}: #{file.gsub(@basepath, "")}"
     end
@@ -155,7 +174,8 @@ class Library
 
   def play_file(path)
     puts "#{path}\n"
-    `vlc --quiet --play-and-exit --qt-start-minimized "#{path}"`
+    cmd = "vlc --quiet --play-and-exit --qt-start-minimized '#{path.gsub(/\'/, "\\'")}' > /dev/null 2>&1"
+    `#{cmd}`
   end
 
   def play(filters=[])
@@ -171,13 +191,24 @@ class Library
         path = files.sample
         puts "#{index}/#{total}\n"
         files.delete(path)
-        play_file(path)
-        rebuild_when_done = true if process_input_during_play(path)
+        vlc = Thread.new{ play_file(path) }
+        user_commands = Thread.new{ sleep(1); process_input_during_play(path) }
+
+        while(vlc.status) do
+          sleep(1)
+          if @broadcast == "exit" or @broadcast == "next"
+            `pkill vlc`
+            @broadcast = nil if @broadcast == "next"
+          end
+        end
+        user_commands.raise("stfu")
+        puts "\n\n"
+
+        break if @broadcast == "exit"
       end
     rescue Interrupt => i
       puts "\ninterrupted by user..."
     end
-    build_index if rebuild_when_done
     puts "all done"
   end
 

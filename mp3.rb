@@ -1,9 +1,10 @@
 require "mp3info"
 
 class Mp3
-  attr_reader :artist, :album, :title, :tracknum, :info
+  attr_reader :filepath, :artist, :album, :title, :tracknum, :info
 
   def initialize(filepath)
+    @filepath = filepath
     begin
       @info = {}
       Mp3Info.open(filepath) do |mp3|
@@ -35,6 +36,14 @@ class Mp3
     tracknum_str = @tracknum.nil? ? "" : "#{@tracknum} "
     path = "#{@artist}/#{@album}/#{tracknum_str}#{@title}.mp3"
     return (basepath.blank? ? path : "#{basepath}/#{path}" )
+  end
+
+  def inspect
+    puts "Path: #{@filepath}"
+    puts "Artist: #{@artist}"
+    puts "Album: #{@album}"
+    puts "Title: #{@title}"
+    puts "Track No.: #{@tracknum}"
   end
 
 

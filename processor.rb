@@ -2,10 +2,8 @@ require './settings.rb'
 require './library.rb'
 
 settings = Settings.new
-settings.basepath = "/media/sagii/media/Music/Music"
-#settings.basepath = "/media/sagii/media/Music/TempMusic"
+library = Library.new(settings)
 
-library = Library.new(settings.basepath)
 args = $*
 if args.include?("--consolidate")
   puts "consolidating library ... "
@@ -35,5 +33,5 @@ if args.include?("--search")
 end
 
 #play the library
-filters = args - args.select{|a| a.start_with?("--") }
+filters = args.reject{|a| a.start_with?("--") }
 library.play(filters)

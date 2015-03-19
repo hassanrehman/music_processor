@@ -11,6 +11,10 @@ class Settings
       tokens = i.split(":")
       s[tokens[0].strip] = if tokens[1] == "Time"
         Time.at(tokens[2].strip.to_i)
+      elsif tokens[1] == "FalseClass"
+        false
+      elsif tokens[1] == "TrueClass"
+        true
       else
         tokens[2].strip
       end
