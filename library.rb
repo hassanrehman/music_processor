@@ -133,6 +133,7 @@ class Library
           puts "removing: #{path}"
           FileUtils.rm_f(path)
           @settings.rebuild = true
+          @broadcast = "next"
         elsif /^(mobile|m)$/i =~ cmd
           puts "copying to phone"
           Android.cp(path, path.gsub("#{@basepath}/", ""))
