@@ -9,7 +9,9 @@ class Library
 
   INDEX_FILENAME = "files/index.txt"
 
-  def initialize(settings)
+  attr_accessor :options
+
+  def initialize(settings, options={})
     @settings = settings
     @basepath = @settings.basepath
 
@@ -20,8 +22,16 @@ class Library
       @settings.rebuild = false
     end
     @broadcast = nil
+
+    @options = {
+        ordered: false
+      }.merge(options)
+
   end
 
+  def set_ordered(v)
+    @options[:ordered] = v
+  end
 
   def get_destination_path(path)
     extname = File.extname(path)
@@ -82,6 +92,30 @@ class Library
     puts "rebuilding library index on #{@basepath}"
     s = Time.now
     filepaths = Dir["#{@basepath}/**/*.mp3"].entries.select{|a| File.file?(a) }
+
+    songs = filepaths.map do |f|
+        tokens = f.split("/")
+        {title: tokens[-1], album: tokens[-2], artist: tokens[-3], base: tokens[0..-4].join("/")}
+      end
+
+    songs.sort! do |a, b|
+        if a[:artist] == b[:artist]
+          if a[:album] == b[:album]
+            if /^\d+.*/ =~ a[:title] and /^\d+.*/ =~ b[:title]
+              a[:title].to_i <=> b[:title].to_i
+            else
+              a[:title] <=> b[:title]
+            end
+          else
+            a[:album] <=> b[:album]
+          end
+        else
+          a[:artist] <=> b[:artist]
+        end
+      end
+
+    filepaths = songs.map{|s| %w(base artist album title).map{|f| s[f.to_sym] }.join("/") }
+
     File.open(INDEX_FILENAME, 'w'){|f| f.puts filepaths.join("|") }
     puts "done rebuilding .. (#{s.elapsed}s)"
   end
@@ -89,6 +123,8 @@ class Library
   def get_files(filters=[])
     build_index unless File.exists?(INDEX_FILENAME)
     files = File.read(INDEX_FILENAME).split("|")
+
+    #filtering files
     if filters.length > 0
       selected_files = []
       filters.each do |filter|
@@ -109,6 +145,7 @@ class Library
       end
       files = selected_files
     end
+
     return files
   end
 
@@ -136,7 +173,8 @@ class Library
           @broadcast = "next"
         elsif /^(mobile|m)$/i =~ cmd
           puts "copying to phone"
-          Android.cp(path, path.gsub("#{@basepath}/", ""))
+          puts "base path is: #{path}"
+          Android.cp(path)
         elsif /^(next|n)$/i =~ cmd
           @broadcast = "next"
         elsif /^(exit|quit)$/i =~ cmd
@@ -175,8 +213,12 @@ class Library
 
   def play_file(path)
     puts "#{path}\n"
-    cmd = "vlc --quiet --play-and-exit --qt-start-minimized '#{path.gsub(/\'/, "\\'")}' > /dev/null 2>&1"
-    `#{cmd}`
+
+    File.open("files/tmp.sh", 'w') do |f|
+      f.puts "/usr/bin/vlc --quiet --play-and-exit --qt-start-minimized \"#{path}\" > /dev/null 2>&1"
+    end
+
+    `sh files/tmp.sh`
   end
 
   def play(filters=[])
@@ -188,9 +230,8 @@ class Library
       index = 0
       loop do 
         break if files.length == 0
-        index += 1
-        path = files.sample
-        puts "#{index}/#{total}\n"
+        path = options[:ordered] ? files.first : files.sample
+        puts "#{index+=1}/#{total}\n"
         files.delete(path)
         vlc = Thread.new{ play_file(path) }
         user_commands = Thread.new{ sleep(1); process_input_during_play(path) }

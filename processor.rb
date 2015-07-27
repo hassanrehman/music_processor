@@ -26,6 +26,10 @@ if args.include?("--rebuild")
   library.build_index
 end
 
+if args.include?("--ordered") or args.include?("-a")
+  library.set_ordered(true)  
+end
+
 if args.include?("--search")
   filters = args - args.select{|a| a.start_with?("--") }
   library.search(filters)
@@ -34,4 +38,5 @@ end
 
 #play the library
 filters = args.reject{|a| a.start_with?("--") }
+
 library.play(filters)
