@@ -15,7 +15,10 @@ class Library
     @settings = settings
     @basepath = @settings.basepath
 
-    raise "Invalid Path #{@basepath}" if !File.exists?(@basepath) and !File.directory?(@basepath)
+    if !File.exists?(@basepath) or !File.directory?(@basepath)
+      puts "Invalid Path #{@basepath}"
+      exit(0)
+    end
 
     if @settings.rebuild
       build_index
@@ -198,6 +201,7 @@ class Library
       return
     end
     search_results = get_files(filters)
+
     if search_results.blank?
       puts "no results"
       return
@@ -212,8 +216,6 @@ class Library
   end
 
   def play_file(path)
-    puts "#{path}\n"
-
     File.open("files/tmp.sh", 'w') do |f|
       f.puts "/usr/bin/vlc --quiet --play-and-exit --qt-start-minimized \"#{path}\" > /dev/null 2>&1"
     end
@@ -231,7 +233,9 @@ class Library
       loop do 
         break if files.length == 0
         path = options[:ordered] ? files.first : files.sample
-        puts "#{index+=1}/#{total}\n"
+
+        mp3 = Mp3.new(path)
+        puts "#{index+=1}/#{total}: #{mp3.artist} - #{mp3.album} - #{"#{mp3.tracknum} " if (mp3.tracknum.to_s||"").length > 0}#{mp3.title}"
         files.delete(path)
         vlc = Thread.new{ play_file(path) }
         user_commands = Thread.new{ sleep(1); process_input_during_play(path) }

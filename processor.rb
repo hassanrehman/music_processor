@@ -22,21 +22,24 @@ if args.include?("--add")
   exit(0)
 end
 
-if args.include?("--rebuild")
+if args.include?("--rebuild") or args.include?("-r")
   library.build_index
 end
 
-if args.include?("--ordered") or args.include?("-a")
+if args.include?("--ordered") or args.include?("-o")
   library.set_ordered(true)  
 end
 
-if args.include?("--search")
-  filters = args - args.select{|a| a.start_with?("--") }
+if args.include?("--search") or args.include?("-s")
+  filters = args - args.select{|a| a.start_with?("-") }
   library.search(filters)
   exit(0)
 end
 
 #play the library
-filters = args.reject{|a| a.start_with?("--") }
+filters = args.reject{|a| a.start_with?("-") }
 
 library.play(filters)
+
+
+

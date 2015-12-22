@@ -1,0 +1,2 @@
+class ErrorMessage < StandardError
+end
